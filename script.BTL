@@ -1,0 +1,325 @@
+const socket = io('http://localhost:5000', {
+    reconnection: true,
+    reconnectionAttempts: 5,
+    transports: ['websocket']
+});
+
+// Debug Socket.IO connection
+socket.on('connect', () => console.log('✅ Connected to Socket.IO server'));
+socket.on('disconnect', () => console.log('❌ Disconnected from Socket.IO server'));
+socket.on('connect_error', (err) => console.error('Socket.IO connection error:', err));
+
+// Global variables
+let publicKeyBase64 = '';
+let privateKeyBase64 = '';
+let receivedData = null;
+
+// ================= SENDER FUNCTIONS =================
+async function generateKey() {
+    const loadingEl = document.getElementById('keyLoading');
+    const statusEl = document.getElementById('status');
+    
+    try {
+        // Show loading state
+        if (loadingEl) loadingEl.classList.add('show');
+        
+        const keyPair = await window.crypto.subtle.generateKey(
+            {
+                name: 'RSASSA-PKCS1-v1_5',
+                modulusLength: 2048,
+                publicExponent: new Uint8Array([1, 0, 1]),
+                hash: 'SHA-256'
+            },
+            true,
+            ['sign', 'verify']
+        );
+
+        const [publicKey, privateKey] = await Promise.all([
+            window.crypto.subtle.exportKey('spki', keyPair.publicKey),
+            window.crypto.subtle.exportKey('pkcs8', keyPair.privateKey)
+        ]);
+
+        publicKeyBase64 = arrayBufferToBase64(publicKey);
+        privateKeyBase64 = arrayBufferToBase64(privateKey);
+
+        // Update UI elements
+        const pubKeyEl = document.getElementById('pubKey');
+        const priKeyEl = document.getElementById('priKey');
+        const inputPriKeyEl = document.getElementById('inputPriKey');
+        
+        if (pubKeyEl) {
+            if (pubKeyEl.tagName === 'TEXTAREA') {
+                pubKeyEl.value = publicKeyBase64;
+            } else {
+                pubKeyEl.textContent = publicKeyBase64;
+            }
+        }
+        
+        if (priKeyEl) {
+            if (priKeyEl.tagName === 'TEXTAREA') {
+                priKeyEl.value = privateKeyBase64;
+            } else {
+                priKeyEl.textContent = privateKeyBase64;
+            }
+        }
+        
+        if (inputPriKeyEl) {
+            inputPriKeyEl.value = privateKeyBase64;
+        }
+        
+        showStatus('Keys generated successfully!', 'success');
+    } catch (error) {
+        showStatus('Error generating keys: ' + error.message, 'error');
+    } finally {
+        // Hide loading state
+        if (loadingEl) loadingEl.classList.remove('show');
+    }
+}
+
+async function signAndSend() {
+    const fileInput = document.getElementById('fileInput');
+    const loadingEl = document.getElementById('signLoading');
+    
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showStatus('Please select a file first', 'error');
+        return;
+    }
+
+    const privateKey = document.getElementById('inputPriKey').value.trim();
+    if (!privateKey) {
+        showStatus('Please enter your private key', 'error');
+        return;
+    }
+
+    try {
+        // Show loading state
+        if (loadingEl) loadingEl.classList.add('show');
+        
+        const file = fileInput.files[0];
+        const fileData = await readFileAsArrayBuffer(file);
+        const signature = await signData(privateKey, fileData);
+
+        socket.emit('send_file', {
+            fileName: file.name,
+            fileData: arrayBufferToBase64(fileData),
+            signature: signature,
+            publicKey: publicKeyBase64,
+            fileType: file.type
+        });
+
+        showStatus(`File "${file.name}" sent successfully!`, 'success');
+    } catch (error) {
+        showStatus('Error signing/sending file: ' + error.message, 'error');
+    } finally {
+        // Hide loading state
+        if (loadingEl) loadingEl.classList.remove('show');
+    }
+}
+
+// ================= RECEIVER FUNCTIONS =================
+socket.on('receive_file', (data) => {
+    console.log('📥 Received file data:', data);
+    receivedData = data;
+
+    // Update file info with enhanced UI
+    const fileInfoEl = document.getElementById('fileInfo');
+    if (fileInfoEl) {
+        const fileSize = Math.round(atob(data.fileData).length / 1024 * 100) / 100;
+        fileInfoEl.innerHTML = `
+            <strong>File Name:</strong> ${data.fileName}<br>
+            <strong>File Type:</strong> ${data.fileType || 'unknown'}<br>
+            <strong>File Size:</strong> ${fileSize} KB<br>
+            <strong>Received at:</strong> ${new Date().toLocaleString()}
+        `;
+    }
+
+    // Display file preview or download link
+    const byteString = atob(data.fileData);
+    const buffer = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i++) {
+        buffer[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([buffer], { type: data.fileType });
+    const url = URL.createObjectURL(blob);
+
+    // Enhanced preview handling
+    const previewEl = document.getElementById('filePreview');
+    if (previewEl) {
+        let preview = '';
+        if (data.fileType && data.fileType.startsWith('image/')) {
+            preview = `<img src="${url}" alt="Preview" style="max-width: 100%; max-height: 400px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">`;
+        } else if (data.fileType && data.fileType.startsWith('text/')) {
+            // For text files, show a preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const truncatedText = text.length > 500 ? text.substring(0, 500) + '...' : text;
+                preview = `<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; font-family: monospace; white-space: pre-wrap; max-height: 200px; overflow-y: auto;">${truncatedText}</div>`;
+                previewEl.innerHTML = preview;
+            };
+            reader.readAsText(blob);
+        }
+        if (preview) previewEl.innerHTML = preview;
+    }
+
+    // Enhanced download button
+    const downloadEl = document.getElementById('fileDownload');
+    if (downloadEl) {
+        downloadEl.innerHTML = `
+            <a href="${url}" download="${data.fileName}" class="download-btn">
+                <i class="fas fa-download"></i>
+                Download ${data.fileName}
+            </a>
+        `;
+    }
+
+    // Fill public key
+    const pubKeyReceiverEl = document.getElementById('pubKeyReceiver');
+    if (pubKeyReceiverEl) {
+        pubKeyReceiverEl.value = data.publicKey;
+    }
+    
+    // Clear previous verification result
+    const verifyResultEl = document.getElementById('verifyResult');
+    if (verifyResultEl) {
+        verifyResultEl.style.display = 'none';
+    }
+});
+
+async function verifySignature() {
+    const loadingEl = document.getElementById('verifyLoading');
+    const resultEl = document.getElementById('verifyResult');
+    
+    if (!receivedData) {
+        if (resultEl) {
+            resultEl.innerHTML = `
+                <i class="fas fa-exclamation-triangle verify-icon"></i>
+                <div>
+                    <strong>No Data Available</strong><br>
+                    <small>No file has been received to verify</small>
+                </div>
+            `;
+            resultEl.className = 'verify-result error';
+            resultEl.style.display = 'flex';
+        }
+        return;
+    }
+
+    try {
+        // Show loading state
+        if (loadingEl) loadingEl.classList.add('show');
+        if (resultEl) resultEl.style.display = 'none';
+        
+        const publicKey = await window.crypto.subtle.importKey(
+            'spki',
+            base64ToArrayBuffer(receivedData.publicKey),
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+            false,
+            ['verify']
+        );
+
+        const isValid = await window.crypto.subtle.verify(
+            { name: 'RSASSA-PKCS1-v1_5' },
+            publicKey,
+            base64ToArrayBuffer(receivedData.signature),
+            base64ToArrayBuffer(receivedData.fileData)
+        );
+
+        // Enhanced result display
+        if (resultEl) {
+            if (isValid) {
+                resultEl.innerHTML = `
+                    <i class="fas fa-check-circle verify-icon"></i>
+                    <div>
+                        <strong>Signature is VALID</strong><br>
+                        <small>The file is authentic and has not been tampered with</small>
+                    </div>
+                `;
+                resultEl.className = 'verify-result valid';
+            } else {
+                resultEl.innerHTML = `
+                    <i class="fas fa-times-circle verify-icon"></i>
+                    <div>
+                        <strong>Signature is INVALID</strong><br>
+                        <small>The file may have been modified or the signature is incorrect</small>
+                    </div>
+                `;
+                resultEl.className = 'verify-result invalid';
+            }
+            resultEl.style.display = 'flex';
+        }
+    } catch (error) {
+        if (resultEl) {
+            resultEl.innerHTML = `
+                <i class="fas fa-exclamation-triangle verify-icon"></i>
+                <div>
+                    <strong>Verification Error</strong><br>
+                    <small>${error.message}</small>
+                </div>
+            `;
+            resultEl.className = 'verify-result error';
+            resultEl.style.display = 'flex';
+        }
+    } finally {
+        // Hide loading state
+        if (loadingEl) loadingEl.classList.remove('show');
+    }
+}
+
+// ================= UTILITY FUNCTIONS =================
+async function signData(privateKeyBase64, data) {
+    const privateKey = await window.crypto.subtle.importKey(
+        'pkcs8',
+        base64ToArrayBuffer(privateKeyBase64),
+        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+
+    const signature = await window.crypto.subtle.sign(
+        { name: 'RSASSA-PKCS1-v1_5' },
+        privateKey,
+        data
+    );
+
+    return arrayBufferToBase64(signature);
+}
+
+function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+function arrayBufferToBase64(buffer) {
+    return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+
+function base64ToArrayBuffer(base64) {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
+
+function showStatus(message, type) {
+    const statusDiv = document.getElementById('status');
+    if (statusDiv) {
+        statusDiv.innerHTML = `
+            <i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
+            ${message}
+        `;
+        statusDiv.className = `status ${type}`;
+        statusDiv.style.display = 'flex';
+        
+        // Auto hide after 5 seconds
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    }
+}

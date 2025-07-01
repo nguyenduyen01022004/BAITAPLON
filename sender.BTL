@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Signature Sender</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            padding: 30px;
+            text-align: center;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            color: #333;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-title i {
+            color: #4CAF50;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+        }
+
+        .btn-secondary:hover {
+            box-shadow: 0 8px 25px rgba(33, 150, 243, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .file-input-custom {
+            width: 100%;
+            padding: 20px;
+            border: 2px dashed #4CAF50;
+            border-radius: 10px;
+            background: #f8fff8;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-input-custom:hover {
+            background: #f0fff0;
+            border-color: #45a049;
+        }
+
+        .file-input-custom i {
+            font-size: 2rem;
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+
+        #fileInput {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .status {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            display: none;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: flex;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: flex;
+        }
+
+        .key-display {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            word-break: break-all;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            color: #666;
+        }
+
+        .loading.show {
+            display: flex;
+        }
+
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .btn {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-signature"></i> Digital Signature Sender</h1>
+            <p>Generate keys, sign files, and send them securely</p>
+        </div>
+        
+        <div class="content">
+            <!-- Key Generation Section -->
+            <div class="section">
+                <div class="section-title">
+                    <i class="fas fa-key"></i>
+                    Key Generation
+                </div>
+                <p style="margin-bottom: 20px; color: #666;">Generate a new RSA key pair for digital signing</p>
+                <button class="btn" onclick="generateKey()">
+                    <i class="fas fa-cog"></i>
+                    Generate New Keys
+                </button>
+                <div class="loading" id="keyLoading">
+                    <div class="spinner"></div>
+                    Generating keys...
+                </div>
+            </div>
+
+            <!-- Keys Display Section -->
+            <div class="section">
+                <div class="section-title">
+                    <i class="fas fa-eye"></i>
+                    Generated Keys
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-unlock"></i> Public Key
+                    </label>
+                    <div class="key-display" id="pubKey">No keys generated yet</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">
+                        <i class="fas fa-lock"></i> Private Key
+                    </label>
+                    <div class="key-display" id="priKey">No keys generated yet</div>
+                </div>
+            </div>
+
+            <!-- File Selection Section -->
+            <div class="section">
+                <div class="section-title">
+                    <i class="fas fa-file-upload"></i>
+                    File Selection
+                </div>
+                
+                <div class="file-input-wrapper">
+                    <div class="file-input-custom" id="fileInputCustom">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <div><strong>Click to select a file</strong></div>
+                        <div style="color: #888; margin-top: 5px;">or drag and drop here</div>
+                    </div>
+                    <input type="file" id="fileInput">
+                </div>
+                <div id="selectedFileInfo" style="margin-top: 15px; display: none;"></div>
+            </div>
+
+            <!-- Signing Section -->
+            <div class="section">
+                <div class="section-title">
+                    <i class="fas fa-pen-fancy"></i>
+                    Digital Signing
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="inputPriKey">
+                        <i class="fas fa-key"></i> Private Key for Signing
+                    </label>
+                    <textarea 
+                        class="form-control" 
+                        id="inputPriKey" 
+                        rows="4" 
+                        placeholder="Paste your private key here or use the generated one above"
+                    ></textarea>
+                </div>
+                
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="signAndSend()">
+                        <i class="fas fa-signature"></i>
+                        Sign & Send File
+                    </button>
+                </div>
+                
+                <div class="loading" id="signLoading">
+                    <div class="spinner"></div>
+                    Signing and sending file...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    
+    <script>
+        // File input enhancement
+        const fileInput = document.getElementById('fileInput');
+        const fileInputCustom = document.getElementById('fileInputCustom');
+        const selectedFileInfo = document.getElementById('selectedFileInfo');
+        
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                selectedFileInfo.innerHTML = `
+                    <div style="padding: 15px; background: #e8f5e8; border-radius: 8px; border-left: 4px solid #4CAF50;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <i class="fas fa-file" style="color: #4CAF50;"></i>
+                            <div>
+                                <strong>${file.name}</strong><br>
+                                <small style="color: #666;">Size: ${(file.size/1024).toFixed(1)} KB | Type: ${file.type || 'Unknown'}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                selectedFileInfo.style.display = 'block';
+                
+                fileInputCustom.innerHTML = `
+                    <i class="fas fa-check-circle" style="color: #4CAF50;"></i>
+                    <div><strong>File Selected: ${file.name}</strong></div>
+                    <div style="color: #888; margin-top: 5px;">Click to change file</div>
+                `;
+            }
+        });
+
+        // Drag and drop functionality
+        fileInputCustom.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#45a049';
+            this.style.background = '#f0fff0';
+        });
+        
+        fileInputCustom.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#4CAF50';
+            this.style.background = '#f8fff8';
+        });
+        
+        fileInputCustom.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#4CAF50';
+            this.style.background = '#f8fff8';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+    </script>
+</body>
+</html>
